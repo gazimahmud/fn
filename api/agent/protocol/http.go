@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 
+	"go.opencensus.io/trace"
+
 	"github.com/fnproject/fn/api/models"
 )
 
@@ -30,8 +32,8 @@ type HTTPProtocol struct {
 func (p *HTTPProtocol) IsStreamable() bool { return true }
 
 func (h *HTTPProtocol) Dispatch(ctx context.Context, ci CallInfo, w io.Writer) error {
-	span, ctx := tracing.StartSpan(ctx, "dispatch_http")
-	defer span.Finish()
+	ctx, span := trace.StartSpan(ctx, "dispatch_http")
+	defer span.End()
 
 	req := ci.Request()
 
@@ -43,23 +45,23 @@ func (h *HTTPProtocol) Dispatch(ctx context.Context, ci CallInfo, w io.Writer) e
 	req.Header.Set("FN_REQUEST_URL", ci.RequestURL())
 	req.Header.Set("FN_CALL_ID", ci.CallID())
 
-	span, _ = tracing.StartSpan(ctx, "dispatch_http_write_request")
+	_, span = trace.StartSpan(ctx, "dispatch_http_write_request")
 	// req.Write handles if the user does not specify content length
 	err := req.Write(h.in)
-	span.Finish()
+	span.End()
 	if err != nil {
 		return err
 	}
 
-	span, _ = tracing.StartSpan(ctx, "dispatch_http_read_response")
+	_, span = trace.StartSpan(ctx, "dispatch_http_read_response")
 	resp, err := http.ReadResponse(bufio.NewReader(h.out), ci.Request())
-	span.Finish()
+	span.End()
 	if err != nil {
 		return models.NewAPIError(http.StatusBadGateway, fmt.Errorf("invalid http response from function err: %v", err))
 	}
 
-	span, _ = tracing.StartSpan(ctx, "dispatch_http_write_response")
-	defer span.Finish()
+	_, span = trace.StartSpan(ctx, "dispatch_http_write_response")
+	defer span.End()
 
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
