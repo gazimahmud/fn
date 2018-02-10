@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -124,7 +125,7 @@ func buildConfig(app *models.App, route *models.Route) models.Config {
 	conf["FN_APP_NAME"] = app.Name
 	conf["FN_PATH"] = route.Path
 	// TODO: might be a good idea to pass in: "FN_BASE_PATH" = fmt.Sprintf("/r/%s", appName) || "/" if using DNS entries per app
-	conf["FN_MEMORY"] = fmt.Sprintf("%d", route.Memory)
+	conf["FN_MEMORY"] = strconv.Itoa(int(route.Memory))
 	conf["FN_TYPE"] = route.Type
 
 	CPUs := route.CPUs.String()

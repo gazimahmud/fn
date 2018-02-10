@@ -3,8 +3,6 @@ package agent
 import (
 	"context"
 	"crypto/sha1"
-	"fmt"
-	"sort"
 	"sync"
 	"sync/atomic"
 )
@@ -43,7 +41,7 @@ type slotToken struct {
 // LIFO queue that exposes input/output channels along
 // with runner/waiter tracking for agent
 type slotQueue struct {
-	key       string
+	key       []byte
 	cond      *sync.Cond
 	slots     []*slotToken
 	nextId    uint64
@@ -59,7 +57,7 @@ func NewSlotQueueMgr() *slotQueueMgr {
 	return obj
 }
 
-func NewSlotQueue(key string) *slotQueue {
+func NewSlotQueue(key []byte) *slotQueue {
 	obj := &slotQueue{
 		key:       key,
 		cond:      sync.NewCond(new(sync.Mutex)),
@@ -245,10 +243,10 @@ func (a *slotQueueMgr) getSlotQueue(call *call) (*slotQueue, bool) {
 	key := getSlotQueueKey(call)
 
 	a.hMu.Lock()
-	slots, ok := a.hot[key]
+	slots, ok := a.hot[string(key)]
 	if !ok {
 		slots = NewSlotQueue(key)
-		a.hot[key] = slots
+		a.hot[string(key)] = slots
 	}
 	a.hMu.Unlock()
 
@@ -262,7 +260,7 @@ func (a *slotQueueMgr) deleteSlotQueue(slots *slotQueue) bool {
 
 	a.hMu.Lock()
 	if slots.isIdle() {
-		delete(a.hot, slots.key)
+		delete(a.hot, string(slots.key))
 		isDeleted = true
 	}
 	a.hMu.Unlock()
@@ -270,31 +268,35 @@ func (a *slotQueueMgr) deleteSlotQueue(slots *slotQueue) bool {
 	return isDeleted
 }
 
-func getSlotQueueKey(call *call) string {
+func getSlotQueueKey(call *call) []byte {
 	// return a sha1 hash of a (hopefully) unique string of all the config
 	// values, to make map lookups quicker [than the giant unique string]
 
 	hash := sha1.New()
-	fmt.Fprint(hash, call.AppName, "\x00")
-	fmt.Fprint(hash, call.Path, "\x00")
-	fmt.Fprint(hash, call.Image, "\x00")
-	fmt.Fprint(hash, call.Timeout, "\x00")
-	fmt.Fprint(hash, call.IdleTimeout, "\x00")
-	fmt.Fprint(hash, call.Memory, "\x00")
-	fmt.Fprint(hash, call.CPUs, "\x00")
-	fmt.Fprint(hash, call.Format, "\x00")
+	hash.Write([]byte(call.AppName))
+	//io.WriteString(hash, "\x00")
+	//fmt.Fprint(hash, call.Path, "\x00")
+	//fmt.Fprint(hash, call.Image, "\x00")
+	//fmt.Fprint(hash, call.Timeout, "\x00")
+	//fmt.Fprint(hash, call.IdleTimeout, "\x00")
+	//fmt.Fprint(hash, call.Memory, "\x00")
+	//fmt.Fprint(hash, call.CPUs, "\x00")
+	//fmt.Fprint(hash, call.Format, "\x00")
 
 	// we have to sort these before printing, yay. TODO do better
-	keys := make([]string, 0, len(call.Config))
-	for k := range call.Config {
-		keys = append(keys, k)
-	}
+	//keys := make([]string, 0, len(call.Config))
+	//for k := range call.Config {
+	//i := sort.SearchStrings(keys, k)
+	//keys = append(keys, "")
+	//copy(keys[i+1:], keys[i:])
+	//keys[i] = k
+	//}
 
-	sort.Strings(keys)
-	for _, k := range keys {
-		fmt.Fprint(hash, k, "\x00", call.Config[k], "\x00")
-	}
+	//for _, k := range keys {
+	//fmt.Fprint(hash, k, "\x00", call.Config[k], "\x00")
+	//}
 
 	var buf [sha1.Size]byte
-	return string(hash.Sum(buf[:0]))
+	hash.Sum(buf[:0])
+	return buf[:]
 }
