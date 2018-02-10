@@ -2,9 +2,14 @@ package agent
 
 import (
 	"context"
-	"crypto/sha1"
+	"encoding/binary"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/cespare/xxhash"
 )
 
 //
@@ -41,7 +46,7 @@ type slotToken struct {
 // LIFO queue that exposes input/output channels along
 // with runner/waiter tracking for agent
 type slotQueue struct {
-	key       []byte
+	key       string
 	cond      *sync.Cond
 	slots     []*slotToken
 	nextId    uint64
@@ -57,7 +62,7 @@ func NewSlotQueueMgr() *slotQueueMgr {
 	return obj
 }
 
-func NewSlotQueue(key []byte) *slotQueue {
+func NewSlotQueue(key string) *slotQueue {
 	obj := &slotQueue{
 		key:       key,
 		cond:      sync.NewCond(new(sync.Mutex)),
@@ -243,10 +248,10 @@ func (a *slotQueueMgr) getSlotQueue(call *call) (*slotQueue, bool) {
 	key := getSlotQueueKey(call)
 
 	a.hMu.Lock()
-	slots, ok := a.hot[string(key)]
+	slots, ok := a.hot[key]
 	if !ok {
 		slots = NewSlotQueue(key)
-		a.hot[string(key)] = slots
+		a.hot[key] = slots
 	}
 	a.hMu.Unlock()
 
@@ -260,7 +265,7 @@ func (a *slotQueueMgr) deleteSlotQueue(slots *slotQueue) bool {
 
 	a.hMu.Lock()
 	if slots.isIdle() {
-		delete(a.hot, string(slots.key))
+		delete(a.hot, slots.key)
 		isDeleted = true
 	}
 	a.hMu.Unlock()
@@ -268,35 +273,49 @@ func (a *slotQueueMgr) deleteSlotQueue(slots *slotQueue) bool {
 	return isDeleted
 }
 
-func getSlotQueueKey(call *call) []byte {
+func getSlotQueueKey(call *call) string {
 	// return a sha1 hash of a (hopefully) unique string of all the config
 	// values, to make map lookups quicker [than the giant unique string]
 
-	hash := sha1.New()
-	hash.Write([]byte(call.AppName))
-	//io.WriteString(hash, "\x00")
-	//fmt.Fprint(hash, call.Path, "\x00")
-	//fmt.Fprint(hash, call.Image, "\x00")
-	//fmt.Fprint(hash, call.Timeout, "\x00")
-	//fmt.Fprint(hash, call.IdleTimeout, "\x00")
-	//fmt.Fprint(hash, call.Memory, "\x00")
-	//fmt.Fprint(hash, call.CPUs, "\x00")
-	//fmt.Fprint(hash, call.Format, "\x00")
+	var b strings.Builder
+	b.WriteString(call.AppName)
+	b.WriteString("\x00")
+	b.WriteString(call.Path)
+	b.WriteString("\x00")
+	b.WriteString(call.Image)
+	b.WriteString("\x00")
+	b.WriteString(call.Format)
+	b.WriteString("\x00")
+
+	// these are all static in size we only need to delimit the whole block of them
+	var byt [8]byte
+	binary.LittleEndian.PutUint32(byt[:4], uint32(call.Timeout))
+	b.Write(byt[:4])
+
+	binary.LittleEndian.PutUint32(byt[:4], uint32(call.IdleTimeout))
+	b.Write(byt[:4])
+
+	binary.LittleEndian.PutUint64(byt[:], call.Memory)
+	b.Write(byt[:])
+
+	binary.LittleEndian.PutUint64(byt[:], uint64(call.CPUs))
+	b.Write(byt[:])
+	b.WriteString("\x00")
 
 	// we have to sort these before printing, yay. TODO do better
-	//keys := make([]string, 0, len(call.Config))
-	//for k := range call.Config {
-	//i := sort.SearchStrings(keys, k)
-	//keys = append(keys, "")
-	//copy(keys[i+1:], keys[i:])
-	//keys[i] = k
-	//}
+	keys := make([]string, 0, len(call.Config))
+	for k, v := range call.Config {
+		k = k + "\x00" + v + "\x00"
+		i := sort.SearchStrings(keys, k)
+		keys = append(keys, "")
+		copy(keys[i+1:], keys[i:])
+		keys[i] = k
+	}
 
-	//for _, k := range keys {
-	//fmt.Fprint(hash, k, "\x00", call.Config[k], "\x00")
-	//}
+	for _, k := range keys {
+		b.WriteString(k)
+	}
 
-	var buf [sha1.Size]byte
-	hash.Sum(buf[:0])
-	return buf[:]
+	sum := xxhash.Sum64String(b.String())
+	return strconv.Itoa(int(sum))
 }

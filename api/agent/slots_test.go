@@ -75,7 +75,7 @@ func TestSlotQueueBasic1(t *testing.T) {
 	slots := make([]Slot, 0, maxId)
 	tokens := make([]*slotToken, 0, maxId)
 
-	obj := NewSlotQueue([]byte(slotName))
+	obj := NewSlotQueue(slotName)
 
 	timeout := time.Duration(500) * time.Millisecond
 	err := checkGetTokenId(t, obj, timeout, 6)
@@ -141,7 +141,7 @@ func TestSlotQueueBasic1(t *testing.T) {
 
 func TestSlotQueueBasic2(t *testing.T) {
 
-	obj := NewSlotQueue([]byte("test2"))
+	obj := NewSlotQueue("test2")
 
 	if !obj.isIdle() {
 		t.Fatalf("Should be idle")
@@ -209,7 +209,7 @@ func TestSlotQueueBasic3(t *testing.T) {
 
 	slotName := "test3"
 
-	obj := NewSlotQueue([]byte(slotName))
+	obj := NewSlotQueue(slotName)
 
 	slot1 := NewTestSlot(1)
 	slot2 := NewTestSlot(2)
