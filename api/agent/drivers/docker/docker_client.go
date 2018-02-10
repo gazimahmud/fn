@@ -12,7 +12,6 @@ import (
 
 	"github.com/fnproject/fn/api/common"
 	"github.com/fsouza/go-dockerclient"
-	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
 	"github.com/sirupsen/logrus"
 )
@@ -101,7 +100,7 @@ type dockerWrap struct {
 func (d *dockerWrap) retry(ctx context.Context, f func() error) error {
 	var i int
 	var err error
-	span := opentracing.SpanFromContext(ctx)
+	span := tracing.FromContext(ctx)
 	defer func() { span.LogFields(log.Int("docker_call_retries", i)) }()
 
 	logger := common.Logger(ctx)
@@ -177,7 +176,7 @@ func filterNoSuchContainer(ctx context.Context, err error) error {
 }
 
 func (d *dockerWrap) Info(ctx context.Context) (info *docker.DockerInfo, err error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "docker_server_version")
+	span, ctx := tracing.StartSpan(ctx, "docker_server_version")
 	defer span.Finish()
 
 	ctx, cancel := context.WithTimeout(ctx, retryTimeout)
@@ -190,7 +189,7 @@ func (d *dockerWrap) Info(ctx context.Context) (info *docker.DockerInfo, err err
 }
 
 func (d *dockerWrap) AttachToContainerNonBlocking(ctx context.Context, opts docker.AttachToContainerOptions) (w docker.CloseWaiter, err error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "docker_attach_container")
+	span, ctx := tracing.StartSpan(ctx, "docker_attach_container")
 	defer span.Finish()
 
 	ctx, cancel := context.WithTimeout(ctx, retryTimeout)
@@ -207,7 +206,7 @@ func (d *dockerWrap) AttachToContainerNonBlocking(ctx context.Context, opts dock
 }
 
 func (d *dockerWrap) WaitContainerWithContext(id string, ctx context.Context) (code int, err error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "docker_wait_container")
+	span, ctx := tracing.StartSpan(ctx, "docker_wait_container")
 	defer span.Finish()
 	err = d.retry(ctx, func() error {
 		code, err = d.dockerNoTimeout.WaitContainerWithContext(id, ctx)
@@ -217,7 +216,7 @@ func (d *dockerWrap) WaitContainerWithContext(id string, ctx context.Context) (c
 }
 
 func (d *dockerWrap) StartContainerWithContext(id string, hostConfig *docker.HostConfig, ctx context.Context) (err error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "docker_start_container")
+	span, ctx := tracing.StartSpan(ctx, "docker_start_container")
 	defer span.Finish()
 	err = d.retry(ctx, func() error {
 		err = d.dockerNoTimeout.StartContainerWithContext(id, hostConfig, ctx)
@@ -231,7 +230,7 @@ func (d *dockerWrap) StartContainerWithContext(id string, hostConfig *docker.Hos
 }
 
 func (d *dockerWrap) CreateContainer(opts docker.CreateContainerOptions) (c *docker.Container, err error) {
-	span, ctx := opentracing.StartSpanFromContext(opts.Context, "docker_create_container")
+	span, ctx := tracing.StartSpan(opts.Context, "docker_create_container")
 	defer span.Finish()
 	err = d.retry(ctx, func() error {
 		c, err = d.dockerNoTimeout.CreateContainer(opts)
@@ -241,7 +240,7 @@ func (d *dockerWrap) CreateContainer(opts docker.CreateContainerOptions) (c *doc
 }
 
 func (d *dockerWrap) PullImage(opts docker.PullImageOptions, auth docker.AuthConfiguration) (err error) {
-	span, ctx := opentracing.StartSpanFromContext(opts.Context, "docker_pull_image")
+	span, ctx := tracing.StartSpan(opts.Context, "docker_pull_image")
 	defer span.Finish()
 	err = d.retry(ctx, func() error {
 		err = d.dockerNoTimeout.PullImage(opts, auth)
@@ -253,9 +252,9 @@ func (d *dockerWrap) PullImage(opts docker.PullImageOptions, auth docker.AuthCon
 func (d *dockerWrap) RemoveContainer(opts docker.RemoveContainerOptions) (err error) {
 	// extract the span, but do not keep the context, since the enclosing context
 	// may be timed out, and we still want to remove the container. TODO in caller? who cares?
-	span, _ := opentracing.StartSpanFromContext(opts.Context, "docker_remove_container")
+	span, _ := tracing.StartSpan(opts.Context, "docker_remove_container")
 	defer span.Finish()
-	ctx := opentracing.ContextWithSpan(context.Background(), span)
+	ctx := tracing.WithSpan(context.Background(), span)
 
 	ctx, cancel := context.WithTimeout(ctx, retryTimeout)
 	defer cancel()
@@ -267,7 +266,7 @@ func (d *dockerWrap) RemoveContainer(opts docker.RemoveContainerOptions) (err er
 }
 
 func (d *dockerWrap) PauseContainer(id string, ctx context.Context) (err error) {
-	span, _ := opentracing.StartSpanFromContext(ctx, "docker_pause_container")
+	span, _ := tracing.StartSpan(ctx, "docker_pause_container")
 	defer span.Finish()
 	ctx, cancel := context.WithTimeout(ctx, pauseTimeout)
 	defer cancel()
@@ -279,7 +278,7 @@ func (d *dockerWrap) PauseContainer(id string, ctx context.Context) (err error) 
 }
 
 func (d *dockerWrap) UnpauseContainer(id string, ctx context.Context) (err error) {
-	span, _ := opentracing.StartSpanFromContext(ctx, "docker_unpause_container")
+	span, _ := tracing.StartSpan(ctx, "docker_unpause_container")
 	defer span.Finish()
 	ctx, cancel := context.WithTimeout(ctx, pauseTimeout)
 	defer cancel()
@@ -291,7 +290,7 @@ func (d *dockerWrap) UnpauseContainer(id string, ctx context.Context) (err error
 }
 
 func (d *dockerWrap) InspectImage(ctx context.Context, name string) (i *docker.Image, err error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "docker_inspect_image")
+	span, ctx := tracing.StartSpan(ctx, "docker_inspect_image")
 	defer span.Finish()
 	ctx, cancel := context.WithTimeout(ctx, retryTimeout)
 	defer cancel()
@@ -303,7 +302,7 @@ func (d *dockerWrap) InspectImage(ctx context.Context, name string) (i *docker.I
 }
 
 func (d *dockerWrap) InspectContainerWithContext(container string, ctx context.Context) (c *docker.Container, err error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "docker_inspect_container")
+	span, ctx := tracing.StartSpan(ctx, "docker_inspect_container")
 	defer span.Finish()
 	ctx, cancel := context.WithTimeout(ctx, retryTimeout)
 	defer cancel()

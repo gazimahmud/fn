@@ -2,8 +2,9 @@ package agent
 
 import (
 	"context"
-	"github.com/fnproject/fn/api/common"
 	"sync"
+
+	"github.com/fnproject/fn/api/common"
 )
 
 // TODO this should expose:
