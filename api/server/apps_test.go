@@ -288,7 +288,7 @@ func TestAppUpdate(t *testing.T) {
 		expectedError error
 	}{
 		// errors
-		{datastore.NewMock(), logs.NewMock(), "/v1/apps/myapp", ``, http.StatusNotFound, models.ErrInvalidJSON},
+		{datastore.NewMock(), logs.NewMock(), "/v1/apps/myapp", ``, http.StatusNotFound, models.ErrAppsNotFound},
 
 		// success
 		{ds, logs.NewMock(), "/v1/apps/myapp", `{ "app": { "config": { "test": "1" } } }`, http.StatusOK, nil},
@@ -309,8 +309,8 @@ func TestAppUpdate(t *testing.T) {
 
 		if test.expectedError != nil {
 			if !strings.Contains(rec.Body.String(), test.expectedError.Error()) {
-				t.Errorf("Test %d: Expected error message to have `%s`",
-					i, test.expectedError.Error())
+				t.Errorf("Test %d: Expected error message to have `%s`, got `%s`",
+					i, test.expectedError.Error(), rec.Body.String())
 			}
 		}
 
